@@ -46,10 +46,38 @@ def setup_ynab(credentials_filename):
     return configuration
 
 
-def get_ynab_budget_categories(configurtion):
+def get_ynab_budget_id(configuration, name):
+    """ Get the API id for the named budget """
+
+    api = ynab.BudgetsApi()
+
+    try:
+        budget_summary = api.get_budgets()
+    except ynab.rest.ApiException as err:
+        raise YNABAutoBudgetError('YNAB API error:\n{}'.format(err))
+
+    # Find the named budget and retur the ID
+    for budget in budget_summary.data.budgets:
+        if budget.name == name:
+            return budget.id
+
+    # If we get here, the budget wasn't found
+    raise YNABAutoBudgetError("Budget '{}' not found")
+
+
+def get_ynab_budget_categories(configuration):
     """ Get the catagory names from the budget """
 
-    pass
+    budget_id = get_ynab_budget_id(configuration, 'My Budget')
+
+    api = ynab.CategoriesApi()
+
+    try:
+        categories_response = api.get_categories(budget_id)
+    except ynab.rest.ApiException as err:
+        raise YNABAutoBudgetError('YNAB API error:\n{}'.format(err))
+
+    return categories_response.data.category_groups
 
 
 def main(arguments):
@@ -58,9 +86,16 @@ def main(arguments):
     try:
         configuration = setup_ynab(arguments.credentials)
 
-        categories = get_ynab_budget_categories(configuration)
+        category_groups = get_ynab_budget_categories(configuration)
 
-        print(categories)
+        #return 0
+        
+        for group in category_groups:
+            print(group.name)
+
+            for category in group.categories:
+                print('  ' + category.name)
+
     except YNABAutoBudgetError as err:
         print(err)
         return 1
