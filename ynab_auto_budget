@@ -14,6 +14,7 @@ import argparse
 import json
 
 import ynab
+import yaml
 
 
 class YNABAutoBudgetError(Exception):
@@ -80,6 +81,28 @@ def get_ynab_budget_categories(configuration):
     return categories_response.data.category_groups
 
 
+def create_empty_template(groups, filename):
+    """ Create an empty template file """
+
+    if os.path.exists(filename):
+        raise YNABAutoBudgetError('--create will not overwrite an existing file')
+
+    template = {'remainder': None, 'categories': []}
+
+    for group in groups:
+        for category in group.categories:
+            if not category.hidden:
+                template['categories'].append({'category': category.name,
+                                            'type': 'fixed',
+                                            'value': 0})
+
+    try:
+        with open(filename,'w') as tfile:
+            yaml.dump(template, stream=tfile, default_flow_style=False)
+    except IOError as err:
+        raise YNABAutoBudgetError(err)
+
+
 def main(arguments):
     """ Get YNAB budget, template, and display results """
 
@@ -88,14 +111,9 @@ def main(arguments):
 
         category_groups = get_ynab_budget_categories(configuration)
 
-        #return 0
+        if args.create:
+            create_empty_template(category_groups, arguments.template)
         
-        for group in category_groups:
-            print(group.name)
-
-            for category in group.categories:
-                print('  ' + category.name)
-
     except YNABAutoBudgetError as err:
         print(err)
         return 1
@@ -117,6 +135,10 @@ if __name__ == '__main__':
                         help="YNAB credentials file",
                         default='~/.ynab/ynab_credentials.json',
                         type=str)
+    
+    parser.add_argument('--create',
+                        help='Create empty template',
+                        action='store_true')
 
     args = parser.parse_args(sys.argv[1:])
 
