@@ -27,6 +27,8 @@ class YNABAutoBudget:
     def __init__(self, credentials_filename):
         self.__setup_ynab(credentials_filename)
         self.__get_ynab_budget_categories()
+        self.__remove_hidden_categories()
+        self.__remove_unused_category_groups()
 
     def __setup_ynab(self, credentials_filename):
         """ Get the user's credentials """
@@ -82,6 +84,20 @@ class YNABAutoBudget:
             raise YNABAutoBudgetError('YNAB API error:\n{}'.format(err))
 
         self.category_groups = categories_response.data.category_groups
+
+
+    def __remove_hidden_categories(self):
+        for group in self.category_groups:
+            group.categories = list(filter(lambda x: not x.hidden, group.categories))
+
+
+    @staticmethod
+    def __valid_category_group(group):
+        return group.categories and group.name != 'Internal Master Category'
+
+
+    def __remove_unused_category_groups(self):
+        self.category_groups = list(filter(YNABAutoBudget.__valid_category_group, self.category_groups))
 
 
     def create_empty_template(self, filename):
