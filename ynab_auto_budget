@@ -103,6 +103,21 @@ def create_empty_template(groups, filename):
         raise YNABAutoBudgetError(err)
 
 
+def show_current_values(groups):
+    for group in groups:
+        #print(group)
+        print(group.name)
+
+        for category in group.categories:
+            print('  {}: Budgeted {:.2f} Activity {:.2f} Balance {:.2f}'\
+                .format(category.name,
+                        category.budgeted / 1000.0,
+                        category.activity / 1000.0,
+                        category.balance / 1000.0))
+    
+    #print(groups)
+
+
 def main(arguments):
     """ Get YNAB budget, template, and display results """
 
@@ -113,7 +128,9 @@ def main(arguments):
 
         if args.create:
             create_empty_template(category_groups, arguments.template)
-        
+        elif args.show:
+            show_current_values(category_groups)
+
     except YNABAutoBudgetError as err:
         print(err)
         return 1
@@ -138,6 +155,10 @@ if __name__ == '__main__':
     
     parser.add_argument('--create',
                         help='Create empty template',
+                        action='store_true')
+
+    parser.add_argument('-s', '--show',
+                        help='Show current budgeted values',
                         action='store_true')
 
     args = parser.parse_args(sys.argv[1:])
