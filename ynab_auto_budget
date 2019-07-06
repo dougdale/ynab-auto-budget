@@ -137,15 +137,58 @@ class YNABAutoBudget:
         #print(groups)
 
 
+    @staticmethod
+    def check_template(filename, total_budget, verbose):
+        try:
+            with open(filename) as tfile:
+                template = yaml.load(tfile)
+        except IOError as err:
+            raise YNABAutoBudgetError('Error opening template file: {}'.format(err))
+        except yaml.YAMLError as err:
+            raise YNABAutoBudgetError('Error in template file format: {}'.format(err))
+
+        remaining = total_budget
+
+        try:
+            for entry in template['categories']:
+                value_type = entry['type']
+
+                if value_type == 'fixed':
+                    value = entry['value']
+                elif entry['type'] == 'percent':
+                    value = (float(entry['value']) * total_budget) / 100.0
+                else:
+                    raise YNABAutoBudgetError('Unrecognized template entry type: {}'.format(entry['type']))
+                
+                if (verbose):
+                    print('{}: {:.2f}'.format(entry['category'], value))
+
+                remaining -= value
+        except KeyError as err: 
+            raise YNABAutoBudgetError('Missing key in template file: {}'.format(err))
+
+        if remaining < 0.0:
+            print('ERROR: Template is over budget by {:.2f}'.format(-remaining))
+        else:
+            print('Your template meets budget with {:.2f} remianing'.format(remaining))
+
+
 def main(arguments):
     """ Get YNAB budget, template, and display results """
 
     try:
+        if args.check:
+            # --check option does not need information from API, so do it
+            # here and exit without wasting time with the API
+            YNABAutoBudget.check_template(arguments.template, args.check, args.verbose)
+            return 0
+
         auto_budget = YNABAutoBudget(arguments.credentials)
 
         if args.create:
             auto_budget.create_empty_template(arguments.template)
-        elif args.show:
+        
+        if args.show:
             auto_budget.show_current_values()
 
     except YNABAutoBudgetError as err:
@@ -162,21 +205,31 @@ if __name__ == '__main__':
                                      formatter_class=formatter_class)
 
     parser.add_argument('template',
-                        help="Budget template file",
+                        help='Budget template file',
                         type=str)
 
     parser.add_argument('-c', '--credentials',
-                        help="YNAB credentials file",
+                        help='YNAB credentials file',
                         default='~/.ynab/ynab_credentials.json',
                         type=str)
-    
-    parser.add_argument('--create',
+
+    parser.add_argument('--verbose',
+                        help='Show more output',
+                        action='store_true')
+
+    group = parser.add_mutually_exclusive_group()
+
+    group.add_argument('--create',
                         help='Create empty template',
                         action='store_true')
 
-    parser.add_argument('-s', '--show',
+    group.add_argument('-s', '--show',
                         help='Show current budgeted values',
                         action='store_true')
+
+    group.add_argument('--check',
+                        help='Check budget template against estimated income amount',
+                        type=float)
 
     args = parser.parse_args(sys.argv[1:])
 
