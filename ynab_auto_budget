@@ -23,113 +23,114 @@ class YNABAutoBudgetError(Exception):
     pass
 
 
-def setup_ynab(credentials_filename):
-    """ Get the user's credentials """
+class YNABAutoBudget:
+    def __init__(self, credentials_filename):
+        self.__setup_ynab(credentials_filename)
+        self.__get_ynab_budget_categories()
 
-    configuration = ynab.Configuration()
+    def __setup_ynab(self, credentials_filename):
+        """ Get the user's credentials """
 
-    try:
-        with open(os.path.expanduser(credentials_filename)) as cfile:
-            credentials = json.load(cfile)
+        self.configuration = ynab.Configuration()
 
-        configuration.api_key['Authorization'] = credentials['key']
-        configuration.api_key_prefix['Authorization'] = credentials['prefix']
-    except IOError as err:
-        raise YNABAutoBudgetError('Unable to open credentials file:\n{}'\
-                                  .format(err))
-    except json.JSONDecodeError:
-        raise YNABAutoBudgetError('Unable to parse credentials file {}'\
-                                  .format(credentials_filename))
-    except KeyError as err:
-        raise YNABAutoBudgetError('Expected key {} not found in credentials '\
-                                  'file {}'.format(err, credentials_filename))
+        try:
+            with open(os.path.expanduser(credentials_filename)) as cfile:
+                credentials = json.load(cfile)
 
-    return configuration
-
-
-def get_ynab_budget_id(configuration, name):
-    """ Get the API id for the named budget """
-
-    api = ynab.BudgetsApi()
-
-    try:
-        budget_summary = api.get_budgets()
-    except ynab.rest.ApiException as err:
-        raise YNABAutoBudgetError('YNAB API error:\n{}'.format(err))
-
-    # Find the named budget and retur the ID
-    for budget in budget_summary.data.budgets:
-        if budget.name == name:
-            return budget.id
-
-    # If we get here, the budget wasn't found
-    raise YNABAutoBudgetError("Budget '{}' not found")
+            self.configuration.api_key['Authorization'] = credentials['key']
+            self.configuration.api_key_prefix['Authorization'] = credentials['prefix']
+        except IOError as err:
+            raise YNABAutoBudgetError('Unable to open credentials file:\n{}'\
+                                    .format(err))
+        except json.JSONDecodeError:
+            raise YNABAutoBudgetError('Unable to parse credentials file {}'\
+                                    .format(credentials_filename))
+        except KeyError as err:
+            raise YNABAutoBudgetError('Expected key {} not found in credentials '\
+                                    'file {}'.format(err, credentials_filename))
 
 
-def get_ynab_budget_categories(configuration):
-    """ Get the catagory names from the budget """
+    def __get_ynab_budget_id(self, name):
+        """ Get the API id for the named budget """
 
-    budget_id = get_ynab_budget_id(configuration, 'My Budget')
+        api = ynab.BudgetsApi()
 
-    api = ynab.CategoriesApi()
+        try:
+            budget_summary = api.get_budgets()
+        except ynab.rest.ApiException as err:
+            raise YNABAutoBudgetError('YNAB API error:\n{}'.format(err))
 
-    try:
-        categories_response = api.get_categories(budget_id)
-    except ynab.rest.ApiException as err:
-        raise YNABAutoBudgetError('YNAB API error:\n{}'.format(err))
+        # Find the named budget and retur the ID
+        for budget in budget_summary.data.budgets:
+            if budget.name == name:
+                return budget.id
 
-    return categories_response.data.category_groups
-
-
-def create_empty_template(groups, filename):
-    """ Create an empty template file """
-
-    if os.path.exists(filename):
-        raise YNABAutoBudgetError('--create will not overwrite an existing file')
-
-    template = {'remainder': None, 'categories': []}
-
-    for group in groups:
-        for category in group.categories:
-            if not category.hidden:
-                template['categories'].append({'category': category.name,
-                                            'type': 'fixed',
-                                            'value': 0})
-
-    try:
-        with open(filename,'w') as tfile:
-            yaml.dump(template, stream=tfile, default_flow_style=False)
-    except IOError as err:
-        raise YNABAutoBudgetError(err)
+        # If we get here, the budget wasn't found
+        raise YNABAutoBudgetError("Budget '{}' not found")
 
 
-def show_current_values(groups):
-    for group in groups:
-        #print(group)
-        print(group.name)
+    def __get_ynab_budget_categories(self):
+        """ Get the catagory names from the budget """
 
-        for category in group.categories:
-            print('  {}: Budgeted {:.2f} Activity {:.2f} Balance {:.2f}'\
-                .format(category.name,
-                        category.budgeted / 1000.0,
-                        category.activity / 1000.0,
-                        category.balance / 1000.0))
-    
-    #print(groups)
+        budget_id = self.__get_ynab_budget_id('My Budget')
+
+        api = ynab.CategoriesApi()
+
+        try:
+            categories_response = api.get_categories(budget_id)
+        except ynab.rest.ApiException as err:
+            raise YNABAutoBudgetError('YNAB API error:\n{}'.format(err))
+
+        self.category_groups = categories_response.data.category_groups
+
+
+    def create_empty_template(self, filename):
+        """ Create an empty template file """
+
+        if os.path.exists(filename):
+            raise YNABAutoBudgetError('{} already exists, will not overwrite'.format(filename))
+
+        template = {'remainder': None, 'categories': []}
+
+        for group in self.category_groups:
+            for category in group.categories:
+                if not category.hidden:
+                    template['categories'].append({'category': category.name,
+                                                'type': 'fixed',
+                                                'value': 0})
+
+        try:
+            with open(filename,'w') as tfile:
+                yaml.dump(template, stream=tfile, default_flow_style=False)
+        except IOError as err:
+            raise YNABAutoBudgetError(err)
+
+
+    def show_current_values(self):
+        for group in self.category_groups:
+            #print(group)
+            print(group.name)
+
+            for category in group.categories:
+                print('  {}: Budgeted {:.2f} Activity {:.2f} Balance {:.2f}'\
+                    .format(category.name,
+                            category.budgeted / 1000.0,
+                            category.activity / 1000.0,
+                            category.balance / 1000.0))
+        
+        #print(groups)
 
 
 def main(arguments):
     """ Get YNAB budget, template, and display results """
 
     try:
-        configuration = setup_ynab(arguments.credentials)
-
-        category_groups = get_ynab_budget_categories(configuration)
+        auto_budget = YNABAutoBudget(arguments.credentials)
 
         if args.create:
-            create_empty_template(category_groups, arguments.template)
+            auto_budget.create_empty_template(arguments.template)
         elif args.show:
-            show_current_values(category_groups)
+            auto_budget.show_current_values()
 
     except YNABAutoBudgetError as err:
         print(err)
