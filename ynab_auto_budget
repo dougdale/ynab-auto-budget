@@ -12,6 +12,7 @@ import sys
 import os
 import argparse
 import json
+import datetime
 
 import ynab
 import yaml
@@ -26,6 +27,7 @@ class YNABAutoBudgetError(Exception):
 class YNABAutoBudget:
     def __init__(self, credentials_filename):
         self.__setup_ynab(credentials_filename)
+        self.budget_id = self.__get_ynab_budget_id('My Budget')
         self.__get_ynab_budget_categories()
         self.__remove_hidden_categories()
         self.__remove_unused_category_groups()
@@ -74,12 +76,10 @@ class YNABAutoBudget:
     def __get_ynab_budget_categories(self):
         """ Get the catagory names from the budget """
 
-        budget_id = self.__get_ynab_budget_id('My Budget')
-
         api = ynab.CategoriesApi()
 
         try:
-            categories_response = api.get_categories(budget_id)
+            categories_response = api.get_categories(self.budget_id)
         except ynab.rest.ApiException as err:
             raise YNABAutoBudgetError('YNAB API error:\n{}'.format(err))
 
@@ -93,12 +93,25 @@ class YNABAutoBudget:
 
     @staticmethod
     def __valid_category_group(group):
-        return group.categories and group.name != 'Internal Master Category'
+        #return group.categories and group.name != 'Internal Master Category'
+        return group.categories
 
 
     def __remove_unused_category_groups(self):
         self.category_groups = list(filter(YNABAutoBudget.__valid_category_group, self.category_groups))
 
+
+    def __get_amount_to_be_budgeted(self):
+        api = ynab.MonthsApi()
+        summaries = api.get_budget_months(self.budget_id)
+
+        now = datetime.date.today()
+
+        for summary in summaries.data.months:
+            if now.year == summary.month.year and now.month == summary.month.month:
+                return summary.to_be_budgeted / 1000.0
+        
+        raise YNABAutoBudgetError('Could not find "To Be Budgeted" amount')
 
     def create_empty_template(self, filename):
         """ Create an empty template file """
@@ -173,6 +186,9 @@ class YNABAutoBudget:
             print('Your template meets budget with {:.2f} remianing'.format(remaining))
 
 
+    def set_budget_amounts(self):
+        amount = self.__get_amount_to_be_budgeted()
+
 def main(arguments):
     """ Get YNAB budget, template, and display results """
 
@@ -187,9 +203,10 @@ def main(arguments):
 
         if args.create:
             auto_budget.create_empty_template(arguments.template)
-        
-        if args.show:
+        elif args.show:
             auto_budget.show_current_values()
+        else:
+            auto_budget.set_budget_amounts()
 
     except YNABAutoBudgetError as err:
         print(err)
