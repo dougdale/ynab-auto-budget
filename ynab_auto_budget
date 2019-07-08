@@ -151,7 +151,7 @@ class YNABAutoBudget:
 
 
     @staticmethod
-    def check_template(filename, total_budget, verbose):
+    def __get_template(filename):
         try:
             with open(filename) as tfile:
                 template = yaml.load(tfile)
@@ -160,44 +160,59 @@ class YNABAutoBudget:
         except yaml.YAMLError as err:
             raise YNABAutoBudgetError('Error in template file format: {}'.format(err))
 
-        remaining = total_budget
+        # Can't do much without a 'categories' section
+        if 'categories' not in template:
+            raise YNABAutoBudgetError('Template file is missing categories section')
 
+        return template
+
+
+    @staticmethod
+    def __get_template_entry_info(entry, total_budget):
         try:
-            for entry in template['categories']:
-                value_type = entry['type']
+            name = entry['category']
+            value_type = entry['type']
 
-                if value_type == 'fixed':
-                    value = entry['value']
-                elif entry['type'] == 'percent':
-                    value = (float(entry['value']) * total_budget) / 100.0
-                else:
-                    raise YNABAutoBudgetError('Unrecognized template entry type: {}'.format(entry['type']))
-                
-                if (verbose):
-                    print('{}: {:.2f}'.format(entry['category'], value))
-
-                remaining -= value
+            if value_type == 'fixed':
+                value = entry['value']
+            elif entry['type'] == 'percent':
+                value = (float(entry['value']) * total_budget) / 100.0
+            else:
+                raise YNABAutoBudgetError('Unrecognized template entry type: {}'.format(entry['type']))
         except KeyError as err: 
             raise YNABAutoBudgetError('Missing key in template file: {}'.format(err))
 
+        return name, value
+
+
+    def set_budget_amounts(self, filename, total_budget=None, verbose=False, send_to_ynab=False):
+        template = YNABAutoBudget.__get_template(filename)
+
+        if not total_budget:
+            total_budget = self.__get_amount_to_be_budgeted()
+            if verbose:
+                print('To Be Budgeted: {}'.format(total_budget))
+
+        remaining = total_budget
+
+        for entry in template['categories']:
+            name, value = YNABAutoBudget.__get_template_entry_info(entry, total_budget)
+
+            if verbose:
+                print('{}: {:.2f}'.format(name, value))
+
+            remaining -= value
+
         if remaining < 0.0:
-            print('ERROR: Template is over budget by {:.2f}'.format(-remaining))
+            print('WARNING: Template is over budget by {:.2f}'.format(-remaining))
         else:
             print('Your template meets budget with {:.2f} remianing'.format(remaining))
 
-
-    def set_budget_amounts(self):
-        amount = self.__get_amount_to_be_budgeted()
 
 def main(arguments):
     """ Get YNAB budget, template, and display results """
 
     try:
-        if args.check:
-            # --check option does not need information from API, so do it
-            # here and exit without wasting time with the API
-            YNABAutoBudget.check_template(arguments.template, args.check, args.verbose)
-            return 0
 
         auto_budget = YNABAutoBudget(arguments.credentials)
 
@@ -205,8 +220,16 @@ def main(arguments):
             auto_budget.create_empty_template(arguments.template)
         elif args.show:
             auto_budget.show_current_values()
+        elif args.check:
+            # Just check template against user specified value
+            auto_budget.set_budget_amounts(arguments.template, 
+                                           total_budget=args.check,
+                                           verbose=args.verbose)
         else:
-            auto_budget.set_budget_amounts()
+            # Calculate the budget amounts using the "To Be Budgeted" value
+            # from YNAB and (optionally) set them in YNAB
+            auto_budget.set_budget_amounts(arguments.template,
+                                           verbose=args.verbose)
 
     except YNABAutoBudgetError as err:
         print(err)
