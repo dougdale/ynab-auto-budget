@@ -14,9 +14,10 @@ import argparse
 import json
 import datetime
 
-import ynab
+import requests
 import yaml
 
+API_PREFIX = 'https://api.youneedabudget.com/v1'
 
 class YNABAutoBudgetError(Exception):
     """ Used for exceptions specific to this script """
@@ -27,7 +28,7 @@ class YNABAutoBudgetError(Exception):
 class YNABAutoBudget:
     def __init__(self, credentials_filename):
         self.__setup_ynab(credentials_filename)
-        self.budget_id = self.__get_ynab_budget_id('My Budget')
+        self.__get_ynab_budget_id('My Budget')
         self.__get_ynab_budget_categories()
         self.__remove_hidden_categories()
         self.__remove_unused_category_groups()
@@ -35,14 +36,13 @@ class YNABAutoBudget:
     def __setup_ynab(self, credentials_filename):
         """ Get the user's credentials """
 
-        self.configuration = ynab.Configuration()
+        self.headers = dict()
 
         try:
             with open(os.path.expanduser(credentials_filename)) as cfile:
                 credentials = json.load(cfile)
 
-            self.configuration.api_key['Authorization'] = credentials['key']
-            self.configuration.api_key_prefix['Authorization'] = credentials['prefix']
+            self.headers['Authorization'] = credentials['prefix'] + ' ' + credentials['key']
         except IOError as err:
             raise YNABAutoBudgetError('Unable to open credentials file:\n{}'\
                                     .format(err))
@@ -54,48 +54,47 @@ class YNABAutoBudget:
                                     'file {}'.format(err, credentials_filename))
 
 
+    def __api_get(self, url):
+        """ Get request from the YNAB API """
+
+        try:
+            return requests.get(API_PREFIX + url, headers=self.headers).json()
+        except requests.exceptions.RequestException as err:
+            raise YNABAutoBudgetError('YNAB API error:\n{}'.format(err))
+
+
     def __get_ynab_budget_id(self, name):
         """ Get the API id for the named budget """
 
-        api = ynab.BudgetsApi()
-
-        try:
-            budget_summary = api.get_budgets()
-        except ynab.rest.ApiException as err:
-            raise YNABAutoBudgetError('YNAB API error:\n{}'.format(err))
+        budget_summary = self.__api_get('/budgets')
 
         # Find the named budget and retur the ID
-        for budget in budget_summary.data.budgets:
-            if budget.name == name:
-                return budget.id
+        for budget in budget_summary['data']['budgets']:
+            if budget['name'] == name:
+                self.budget_id = budget['id']
+                return
 
         # If we get here, the budget wasn't found
-        raise YNABAutoBudgetError("Budget '{}' not found")
+        raise YNABAutoBudgetError("Budget '{}' not found".format(name))
 
 
     def __get_ynab_budget_categories(self):
         """ Get the catagory names from the budget """
 
-        api = ynab.CategoriesApi()
+        categories_response = self.__api_get('/budgets/{}/categories'.format(self.budget_id))
 
-        try:
-            categories_response = api.get_categories(self.budget_id)
-        except ynab.rest.ApiException as err:
-            raise YNABAutoBudgetError('YNAB API error:\n{}'.format(err))
-
-        self.category_groups = categories_response.data.category_groups
-        #print(categories_response)
+        self.category_groups = categories_response['data']['category_groups']
 
 
     def __remove_hidden_categories(self):
         for group in self.category_groups:
-            group.categories = list(filter(lambda x: not x.hidden, group.categories))
+            group['categories'] = list(filter(lambda x: not x['hidden'], group['categories']))
 
 
     @staticmethod
     def __valid_category_group(group):
         #return group.categories and group.name != 'Internal Master Category'
-        return group.categories
+        return len(group['categories'])
 
 
     def __remove_unused_category_groups(self):
@@ -103,14 +102,15 @@ class YNABAutoBudget:
 
 
     def __get_amount_to_be_budgeted(self):
-        api = ynab.MonthsApi()
-        summaries = api.get_budget_months(self.budget_id)
+        """ Retrieve this month's "To Be Budgeted" amount from YNAB """
+
+        summaries = self.__api_get('/budgets/{}/months'.format(self.budget_id))
 
         now = datetime.date.today()
 
         for summary in summaries.data.months:
-            if now.year == summary.month.year and now.month == summary.month.month:
-                return summary.to_be_budgeted / 1000.0
+            if now.year == summary['month']['year'] and now.month == summary['month']['month']:
+                return summary['to_be_budgeted'] / 1000.0
         
         raise YNABAutoBudgetError('Could not find "To Be Budgeted" amount')
 
@@ -138,15 +138,14 @@ class YNABAutoBudget:
 
     def show_current_values(self):
         for group in self.category_groups:
-            print(group)
-            print(group.name)
+            print(group['name'])
 
-            for category in group.categories:
+            for category in group['categories']:
                 print('  {}: Budgeted {:.2f} Activity {:.2f} Balance {:.2f}'\
-                    .format(category.name,
-                            category.budgeted / 1000.0,
-                            category.activity / 1000.0,
-                            category.balance / 1000.0))
+                    .format(category['name'],
+                            category['budgeted'] / 1000.0,
+                            category['activity'] / 1000.0,
+                            category['balance'] / 1000.0))
         
         #print(groups)
 
@@ -194,7 +193,7 @@ class YNABAutoBudget:
             if verbose:
                 print('To Be Budgeted: {}'.format(total_budget))
 
-        remaining = total_budget
+        remaining = int(total_budget)
 
         for entry in template['categories']:
             name, value = YNABAutoBudget.__get_template_entry_info(entry, total_budget)
