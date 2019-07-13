@@ -84,6 +84,7 @@ class YNABAutoBudget:
             raise YNABAutoBudgetError('YNAB API error:\n{}'.format(err))
 
         self.category_groups = categories_response.data.category_groups
+        #print(categories_response)
 
 
     def __remove_hidden_categories(self):
@@ -137,7 +138,7 @@ class YNABAutoBudget:
 
     def show_current_values(self):
         for group in self.category_groups:
-            #print(group)
+            print(group)
             print(group.name)
 
             for category in group.categories:
@@ -229,7 +230,8 @@ def main(arguments):
             # Calculate the budget amounts using the "To Be Budgeted" value
             # from YNAB and (optionally) set them in YNAB
             auto_budget.set_budget_amounts(arguments.template,
-                                           verbose=args.verbose)
+                                           verbose=args.verbose,
+                                           send_to_ynab=True)
 
     except YNABAutoBudgetError as err:
         print(err)
