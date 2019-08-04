@@ -108,8 +108,10 @@ class YNABAutoBudget:
 
         now = datetime.date.today()
 
-        for summary in summaries.data.months:
-            if now.year == summary['month']['year'] and now.month == summary['month']['month']:
+        for summary in summaries['data']['months']:
+            summary_date = datetime.date.fromisoformat(summary['month'])
+
+            if now.year == summary_date.year and now.month == summary_date.month:
                 return summary['to_be_budgeted'] / 1000.0
         
         raise YNABAutoBudgetError('Could not find "To Be Budgeted" amount')
@@ -230,7 +232,7 @@ def main(arguments):
             # from YNAB and (optionally) set them in YNAB
             auto_budget.set_budget_amounts(arguments.template,
                                            verbose=args.verbose,
-                                           send_to_ynab=True)
+                                           send_to_ynab=args.update)
 
     except YNABAutoBudgetError as err:
         print(err)
@@ -267,6 +269,11 @@ if __name__ == '__main__':
     group.add_argument('-s', '--show',
                         help='Show current budgeted values',
                         action='store_true')
+
+    group.add_argument('-u', '--update',
+                        help='Update YNAB with the calculated values',
+                        action='store_true',
+                        default=False)
 
     group.add_argument('--check',
                         help='Check budget template against estimated income amount',
