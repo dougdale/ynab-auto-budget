@@ -68,8 +68,6 @@ class YNABAutoBudget:
     def __api_patch(self, url, data):
         """ Send patch request to the YNAB API """
 
-        print(url)
-        print(data)
         try:
             return requests.patch(API_PREFIX + url, json.dumps(data), headers=self.headers).json()
         except requests.exceptions.RequestException as err:
@@ -102,7 +100,6 @@ class YNABAutoBudget:
         for group in self.category_groups:
             for category in group['categories']:
                 self.category_ids[category['name']] = category['id']
-                print('{}: {}'.format(category['name'], category['id']))
 
 
     def __remove_hidden_categories(self):
@@ -225,12 +222,9 @@ class YNABAutoBudget:
             if send_to_ynab:
                 patch_dict = {'category': {'budgeted': int(value * 1000)}}
             
-                print(self.__api_patch('/budgets/{}/months/current/categories/{}'.format(self.budget_id, self.category_ids[name]), patch_dict))
+                self.__api_patch('/budgets/{}/months/current/categories/{}'.format(self.budget_id, self.category_ids[name]), patch_dict)
 
             remaining -= value
-
-        #patch_dict = {'category': {'budgeted': 2345}}
-        #print(self.__api_patch('/budgets/a6563a00-0b12-4ffc-8dd7-3142fb2f67af/months/2019-09-01/categories/b3cbd7ee-ffbc-4ee8-853f-d60176508a48', patch_dict))
 
         if remaining < 0.0:
             print('WARNING: Template is over budget by {:.2f}'.format(-remaining))
