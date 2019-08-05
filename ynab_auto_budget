@@ -56,23 +56,39 @@ class YNABAutoBudget:
                                     'file {}'.format(err, credentials_filename))
 
 
+    def __check_api_result(self, result):
+        """ Check the validity of the result of the API request """
+
+        data = result.json()
+
+        if not result.ok:
+            raise YNABAutoBudgetError('Request Error: {} {}:{}'.format(result.status_code, 
+                                                                       data['error']['name'],
+                                                                       data['error']['detail']))
+
+        return data
+
+    
     def __api_get(self, url):
         """ Get request from the YNAB API """
 
         try:
-            return requests.get(API_PREFIX + url, headers=self.headers).json()
+            result = requests.get(API_PREFIX + url, headers=self.headers)
         except requests.exceptions.RequestException as err:
             raise YNABAutoBudgetError('YNAB API error:\n{}'.format(err))
+
+        return self.__check_api_result(result)
 
 
     def __api_patch(self, url, data):
         """ Send patch request to the YNAB API """
 
         try:
-            return requests.patch(API_PREFIX + url, json.dumps(data), headers=self.headers).json()
+            result =  requests.patch(API_PREFIX + url, json.dumps(data), headers=self.headers)
         except requests.exceptions.RequestException as err:
             raise YNABAutoBudgetError('YNAB API error:\n{}'.format(err))
 
+        return self.__check_api_result(result)
 
     def __get_ynab_budget_id(self, name):
         """ Get the API id for the named budget """
